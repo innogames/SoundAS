@@ -1,5 +1,6 @@
 package treefortress.sound
 {
+	import com.innogames.util.CallbackCollection;
 	import flash.display.Sprite;
 	import flash.events.Event;
 	import flash.events.IOErrorEvent;
@@ -11,14 +12,13 @@ package treefortress.sound
 	import flash.utils.Dictionary;
 	import flash.utils.getTimer;
 	
-	import org.osflash.signals.Signal;
-	
 	
 	/**
 	 * Controls playback and loading of a group of sounds. SoundAS references a global instance of SoundManager, but you are free to instanciate your own and use them in a modular fashion.
 	 */
 	public class SoundManager
 	{
+		private static var _rootManager:SoundManager;
 		protected var instances:Vector.<SoundInstance>;
 		protected var instancesBySound:Dictionary;
 		protected var instancesByType:Object;
@@ -40,18 +40,18 @@ package treefortress.sound
 		}
 		
 		/**
-		 * Dispatched when an external Sound has completed loading. 
+		 * Dispatched when an external Sound has completed loading.
 		 */
-		public var loadCompleted:Signal;
+		public var loadCompletedCallbacks:CallbackCollection;
 		
 		/**
-		 * Dispatched when an external Sound has failed loading. 
+		 * Dispatched when an external Sound has failed loading.
 		 */
-		public var loadFailed:Signal;
+		public var loadFailedCallbacks:CallbackCollection;
 		public var parent:SoundManager;
 		
 		/**
-		 * Play audio by type. It must already be loaded into memory using the addSound() or loadSound() APIs. 
+		 * Play audio by type. It must already be loaded into memory using the addSound() or loadSound() APIs.
 		 * @param type
 		 * @param volume
 		 * @param startTime Starting time in milliseconds
@@ -69,7 +69,7 @@ package treefortress.sound
 			//Sound is playing, and we're not allowed to interrupt it. Just set volume.
 			if(!allowInterrupt && si.isPlaying){
 				si.volume = volume;
-			} 
+			}
 				//Play sound
 			else {
 				si.play(volume, startTime, loops, allowMultiple, enableSeamlessLoops);
@@ -101,7 +101,7 @@ package treefortress.sound
 		}
 		
 		/**
-		 * Resume specific sound 
+		 * Resume specific sound
 		 */
 		public function resume(type:String):SoundInstance {
 			return getSound(type).resume();
@@ -116,8 +116,8 @@ package treefortress.sound
 			}
 		}
 		
-		/** 
-		 * Pause a specific sound 
+		/**
+		 * Pause a specific sound
 		 **/
 		public function pause(type:String):SoundInstance {
 			return getSound(type).pause();
@@ -132,7 +132,7 @@ package treefortress.sound
 			}
 		}
 		
-		/** 
+		/**
 		 * Fade specific sound starting at the current volume
 		 **/
 		public function fadeTo(type:String, endVolume:Number = 1, duration:Number = 1000, stopAtZero:Boolean = true):SoundInstance {
@@ -148,7 +148,7 @@ package treefortress.sound
 			}
 		}
 		
-		/** 
+		/**
 		 * Fade master volume starting at the current value
 		 **/
 		public function fadeMasterTo(endVolume:Number = 1, duration:Number = 1000, stopAtZero:Boolean = true):void {
@@ -156,7 +156,7 @@ package treefortress.sound
 			
 		}
 		
-		/** 
+		/**
 		 * Fade specific sound specifying both the StartVolume and EndVolume.
 		 **/
 		public function fadeFrom(type:String, startVolume:Number = 0, endVolume:Number = 1, duration:Number = 1000, stopAtZero:Boolean = true):SoundInstance {
@@ -172,7 +172,7 @@ package treefortress.sound
 			}
 		}
 		
-		/** 
+		/**
 		 * Fade master volume specifying both the StartVolume and EndVolume.
 		 **/
 		public function fadeMasterFrom(startVolume:Number = 0, endVolume:Number = 1, duration:Number = 1000, stopAtZero:Boolean = true):void {
@@ -213,7 +213,7 @@ package treefortress.sound
 		}
 		
 		/**
-		 * Set soundTransform on all instances. 
+		 * Set soundTransform on all instances.
 		 */
 		public function set soundTransform(value:SoundTransform):void {
 			for(var i:int = instances.length; i--;){
@@ -221,12 +221,20 @@ package treefortress.sound
 			}
 		}
 		
+		public function hasSoundType(type:String):Boolean
+		{
+			if(type == null){
+				return false;
+			}
+			return instancesByType[type] != null;
+		}
+		
 		/**
 		 * Returns a SoundInstance for a specific type.
 		 */
 		public function getSound(type:String, forceNew:Boolean = false):SoundInstance {
-			if(type == null){ 
-				return null; 
+			if(type == null){
+				return null;
 			}
 			//Try and retrieve instance from this manager.
 			var si:SoundInstance = instancesByType[type];
@@ -247,24 +255,24 @@ package treefortress.sound
 			}
 			if(!si){ throw(new Error("[SoundAS] Sound with type '"+type+"' does not appear to be loaded.")); }
 			if(forceNew){
-				si = si.clone();	
-			} 
+				si = si.clone();
+			}
 			return si;
 		}
 		
 		/**
 		 * Preload a sound from a URL or Local Path
 		 * @param url External file path to the sound instance.
-		 * @param type 
+		 * @param type
 		 * @param buffer
-		 * 
+		 *
 		 */
 		public function loadSound(url:String, type:String, buffer:int = 100):void {
 			//Check whether this Sound is already loaded
 			var si:SoundInstance = instancesByType[type];
 			if(si && si.url == url){ return; }
 			
-			si = new SoundInstance(null, type);
+			si = new SoundInstance(_rootManager, null, type);
 			si.url = url; //Useful for looking in case of load error
 			si.sound = new Sound(new URLRequest(url), new SoundLoaderContext(buffer, false));
 			si.sound.addEventListener(IOErrorEvent.IO_ERROR, onSoundLoadError, false, 0, true);
@@ -282,11 +290,13 @@ package treefortress.sound
 			if(instancesByType[type]){
 				si = instancesByType[type];
 				si.sound = sound;
-			} 
+			}
 				//Create a new SoundInstance
 			else {
-				si = new SoundInstance(sound, type);
+				si = new SoundInstance(_rootManager, sound, type);
 			}
+			if (this != _rootManager)
+				_rootManager.addInstance(si);
 			addInstance(si);
 		}
 		
@@ -334,8 +344,8 @@ package treefortress.sound
 		 * Return a specific group , create one if it doesn't exist.
 		 */
 		public function group(name:String):SoundManager {
-			if(!groupsByName[name]){ 
-				groupsByName[name] = new SoundManager(); 
+			if(!groupsByName[name]){
+				groupsByName[name] = new SoundManager();
 				(groupsByName[name] as SoundManager).parent = this;
 				
 				if(!groups){ groups = new <SoundManager>[]; }
@@ -345,14 +355,15 @@ package treefortress.sound
 			return groupsByName[name];
 		}
 		
+		
+		
 		/**
 		 * PRIVATE
 		 */
 		protected function init():void {
-			//Create external signals
-			if(!loadCompleted){ loadCompleted = new Signal(SoundInstance); }
-			if(!loadFailed){ loadFailed = new Signal(SoundInstance); }
 			
+			if (!_rootManager)
+				_rootManager = this;
 			//Init collections
 			_volume = 1;
 			_pan = 0;
@@ -395,13 +406,7 @@ package treefortress.sound
 		}
 		
 		protected function onTick(event:Event):void {
-			var t:int = getTimer();
-			for(var i:int = activeTweens.length; i--;){
-				if(activeTweens[i].update(t)){
-					activeTweens[i].end();
-					activeTweens.splice(i, 1);
-				}
-			}
+			advanceTime();
 			tickEnabled = (activeTweens.length > 0);
 		}
 		
@@ -415,15 +420,27 @@ package treefortress.sound
 		
 		protected function onSoundLoadComplete(event:Event):void {
 			var sound:Sound = event.target as Sound;
-			loadCompleted.dispatch(instancesBySound[sound]);	
+			loadCompletedCallbacks.iterateCallbacks(instancesBySound[sound]);
 		}
 		
 		protected function onSoundLoadProgress(event:ProgressEvent):void { }
 		
 		protected function onSoundLoadError(event:IOErrorEvent):void {
 			var sound:SoundInstance = instancesBySound[event.target as Sound];
-			loadFailed.dispatch(sound);
+			loadFailedCallbacks.iterateCallbacks(sound);
 			trace("[SoundAS] ERROR: Failed Loading Sound '"+sound.type+"' @ "+sound.url);
+		}
+		
+		public function advanceTime():void
+		{
+			if (activeTweens.length == 0) return;
+			var t:int = getTimer();
+			for(var i:int = activeTweens.length; i--;){
+				if(activeTweens[i].update(t)){
+					activeTweens[i].end();
+					activeTweens.splice(i, 1);
+				}
+			}
 		}
 		
 		protected function get tickEnabled():Boolean { return _tickEnabled; }
@@ -434,7 +451,7 @@ package treefortress.sound
 				if(!ticker){ ticker = new Sprite(); }
 				ticker.addEventListener(Event.ENTER_FRAME, onTick);
 			} else {
-				ticker.removeEventListener(Event.ENTER_FRAME, onTick); 
+				ticker.removeEventListener(Event.ENTER_FRAME, onTick);
 			}
 		}
 	}

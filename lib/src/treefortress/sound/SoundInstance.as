@@ -1,16 +1,18 @@
 package treefortress.sound
 {
+	import com.innogames.nova.ApplicationContext;
+	import com.innogames.util.CallbackCollection;
 	import flash.events.Event;
 	import flash.media.Sound;
 	import flash.media.SoundChannel;
 	import flash.media.SoundTransform;
 	
-	import org.osflash.signals.Signal;
-	
 	/**
 	 * Controls playback of a single sound. Comes with convenience methods for all the common Sound APIs (pause, resume, set position, volume etc). This can be used in a modular fashion if all you need is a simple wrapper around the Sound class.
 	 */
 	public class SoundInstance {
+		
+		private var _rootManager:SoundManager;
 		
 		
 		public var manager:SoundManager;
@@ -38,7 +40,7 @@ package treefortress.sound
 		/**
 		 * Dispatched when playback has completed
 		 */
-		public var soundCompleted:Signal;
+		public const soundCompletedCallbacks:CallbackCollection = new CallbackCollection();
 		
 		/**
 		 * Number of times to loop this sound. Pass -1 to loop forever.
@@ -69,29 +71,29 @@ package treefortress.sound
 		
 		
 		
-		public function SoundInstance(sound:Sound = null, type:String = null){
+		public function SoundInstance(rootManager:SoundManager, sound:Sound = null, type:String = null){
+			_rootManager = rootManager;
 			this.sound = sound;
 			this.type = type;
-			manager = SoundAS;
+			manager = rootManager;
 			pauseTime = 0;
-			_volume = 1;	
+			_volume = 1;
 			_pan = 0;
 			_masterVolume = 1
 			_soundTransform = new SoundTransform();
-			soundCompleted = new Signal(SoundInstance);
 			oldChannels = new <SoundChannel>[];
 		}
 		
 		/**
 		 * When is is enabled, you will have seamless looping of your sound files (assuming they are encoded properly), but will experience issues when pausing/resuming them.
-		 * The bug is detailed here: http://www.stevensacks.net/2008/08/07/as3-sound-channel-bug/. As a workaround, always stop your looping sounds and start over, do not try and resume. 
+		 * The bug is detailed here: http://www.stevensacks.net/2008/08/07/as3-sound-channel-bug/. As a workaround, always stop your looping sounds and start over, do not try and resume.
 		 */
 		public function get enableSeamlessLoops():Boolean {
 			return _enableSeamlessLoops;
 		}
 
 		/**
-		 * Play this Sound 
+		 * Play this Sound
 		 * @param volume
 		 * @param startTime Start position in milliseconds
 		 * @param loops Number of times to loop Sound. Pass -1 to loop forever.
@@ -99,12 +101,14 @@ package treefortress.sound
 		 * @param allow seamless sound loops. Note that this will exhibit a bug when attempting to pause/resume the looping sound.
 		 */
 		public function play(volume:Number = 1, startTime:Number = 0, loops:int = 0, allowMultiple:Boolean = true, enableSeamlessLoops:Boolean = false):SoundInstance {
+			//if sound is not ready to play just skip it
+			if (sound.bytesTotal == 0) return this;
 			this.loops = loops;
 			_enableSeamlessLoops = enableSeamlessLoops;
 			
 			//If loops == -1, switch it to loop infinitely
 			loops = (loops < 0)? int.MAX_VALUE : loops;
-			_loopsRemaining = 0; 
+			_loopsRemaining = 0;
 			
 			//When not using seamless looping, maintain an internal loopsRemaining counter, and loop manually on soudn complete.
 			//This avoids a SoundAPI bug with pause/resume: http://www.stevensacks.net/2008/08/07/as3-sound-channel-bug/
@@ -121,19 +125,19 @@ package treefortress.sound
 				}
 				channel = sound.play(startTime, loops);
 			} else {
-				if(channel){ 
+				if(channel){
 					stopChannel(channel);
 				}
 				channel = sound.play(startTime, loops);
 			}
-			if(channel){ 				
+			if(channel){
 				channel.addEventListener(Event.SOUND_COMPLETE, onSoundComplete);
 				_isPlaying = true;
 			}
 			pauseTime = 0; //Always reset pause time on play
 			
-			this.volume = volume;	
-			this.mute = mute;
+			this.volume = volume;
+			this.mute = mute && _rootManager.mute;
 			return this;
 		}
 		
@@ -159,7 +163,7 @@ package treefortress.sound
 		public function resume(forceStart:Boolean = false):SoundInstance {
 			if(isPaused || forceStart){
 				play(_volume, pauseTime, loops, allowMultiple);
-			} 
+			}
 			return this;
 		}
 		
@@ -229,7 +233,7 @@ package treefortress.sound
 		 */
 		public function get position():Number { return channel? channel.position : 0; }
 		public function set position(value:Number):void {
-			if(channel){ 
+			if(channel){
 				stopChannel(channel);
 			}
 			channel = sound.play(value, loops);
@@ -281,7 +285,7 @@ package treefortress.sound
 		 * Create a duplicate of this SoundInstance
 		 */
 		public function clone():SoundInstance {
-			var si:SoundInstance = new SoundInstance(sound, type);
+			var si:SoundInstance = new SoundInstance(_rootManager, sound, type);
 			return si;
 		}
 		
@@ -289,7 +293,7 @@ package treefortress.sound
 		 * Unload sound from memory.
 		 */
 		public function destroy():void {
-			soundCompleted.removeAll();
+			soundCompletedCallbacks.clearCallbacks();
 			try {
 				sound.close();
 			} catch(e:Error){}
@@ -309,24 +313,24 @@ package treefortress.sound
 			channel.removeEventListener(Event.SOUND_COMPLETE, onSoundComplete);
 			
 			//If it's the current channel, see if we should loop.
-			if(channel == this.channel){ 
+			if(channel == this.channel){
 				this.channel = null;
 				pauseTime = 0;
 				//Loop manually?
 				if(_enableSeamlessLoops == false){
 					//loop forever?
-					if(loops == -1){ 
+					if(loops == -1){
 						play(_volume, 0, -1, allowMultiple);
-					} 
+					}
 					//Loop set number of times?
 					else if(_loopsRemaining--){
 						play(_volume, 0, _loopsRemaining, allowMultiple);
 					} else {
 						_isPlaying = false;
-						soundCompleted.dispatch(this);
+						soundCompletedCallbacks.iterateCallbacks(this);
 					}
 				} else {
-					soundCompleted.dispatch(this);
+					soundCompletedCallbacks.iterateCallbacks(this);
 				}
 			}
 			//Clear out any old channels...
@@ -339,7 +343,7 @@ package treefortress.sound
 		}
 		
 		/**
-		 * Loops remaining, this will auto-decrement each time the sound loops. It will equal -1 when the sound is completed. 
+		 * Loops remaining, this will auto-decrement each time the sound loops. It will equal -1 when the sound is completed.
 		 * It will equal 0 if the sound is looping infinitely, or not looping at all.
 		 */
 		public function get loopsRemaining():int {
@@ -353,9 +357,9 @@ package treefortress.sound
 			if(!channel){ return; }
 			channel.removeEventListener(Event.SOUND_COMPLETE, onSoundComplete);
 			try {
-				channel.stop(); 
+				channel.stop();
 			} catch(e:Error){};
-		}		
+		}
 		
 		/**
 		 * Kill all orphaned channels
@@ -374,7 +378,7 @@ package treefortress.sound
 		protected function updateOldChannels():void {
 			if(!channel){ return; }
 			for(var i:int = oldChannels.length; i--;){
-				oldChannels[i].soundTransform = channel.soundTransform;	
+				oldChannels[i].soundTransform = channel.soundTransform;
 			}
 		}
 
@@ -384,10 +388,15 @@ package treefortress.sound
 		}
 		
 		public function set soundTransform(value:SoundTransform):void {
-			if(value.volume > 0){ _muted = false; } 
+			if(value.volume > 0){ _muted = false; }
 			else if(value.volume == 0){ _muted = true; }
 			channel.soundTransform = value;
 			updateOldChannels();
+		}
+		
+		public function get rootManager():SoundManager
+		{
+			return _rootManager;
 		}
 		
 	}

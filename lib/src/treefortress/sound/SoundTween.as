@@ -1,10 +1,12 @@
 package treefortress.sound
 {
+	import com.innogames.util.CallbackCollection;
 	import flash.utils.getTimer;
-	
-	import org.osflash.signals.Signal;
+
 	
 	public class SoundTween {
+		
+		private var _rootManager:SoundManager;
 		
 		public var startTime:int;
 		public var startVolume:Number;
@@ -15,7 +17,7 @@ package treefortress.sound
 		protected var _sound:SoundInstance;
 		protected var _isComplete:Boolean;
 
-		public var ended:Signal;
+		public const onEndedCallbacks:CallbackCollection = new CallbackCollection();
 		public var stopAtZero:Boolean;
 		
 		public function SoundTween(si:SoundInstance, endVolume:Number, duration:Number, isMasterFade:Boolean = false) {
@@ -23,8 +25,7 @@ package treefortress.sound
 				sound = si;
 				startVolume = sound.volume;
 			}
-			
-			ended = new Signal(SoundInstance);
+			_rootManager = si.rootManager;
 			this.isMasterFade = isMasterFade;
 			init(startVolume, endVolume, duration);
 		}
@@ -34,11 +35,11 @@ package treefortress.sound
 			
 			if(isMasterFade){
 				if(t - startTime < duration){
-					SoundAS.masterVolume = easeOutQuad(t - startTime, startVolume, endVolume - startVolume, duration);
+					_rootManager.masterVolume = easeOutQuad(t - startTime, startVolume, endVolume - startVolume, duration);
 				} else {
-					SoundAS.masterVolume = endVolume;
+					_rootManager.masterVolume = endVolume;
 				}
-				_isComplete = SoundAS.masterVolume == endVolume;
+				_isComplete = _rootManager.masterVolume == endVolume;
 				
 			} else {
 				if(t - startTime < duration){
@@ -60,8 +61,8 @@ package treefortress.sound
 			_isComplete = false;
 		}
 		
-		/** 
-		 * End the fade and dispatch ended signal. Optionally, apply the end volume as well. 
+		/**
+		 * End the fade and dispatch ended signal. Optionally, apply the end volume as well.
 		 * **/
 		public function end(applyEndVolume:Boolean = false):void {
 			_isComplete = true;
@@ -73,14 +74,14 @@ package treefortress.sound
 					sound.stop();
 				}
 			}
-			ended.dispatch(this.sound);
-			ended.removeAll();
+			onEndedCallbacks.iterateCallbacks(this.sound);
+			onEndedCallbacks.clearCallbacks();
 		}
 		
 		/** End the fade silently, will not send 'ended' signal **/
 		public function kill():void {
 			_isComplete = true;
-			ended.removeAll();
+			onEndedCallbacks.clearCallbacks();
 		}
 		
 		/**
