@@ -137,7 +137,7 @@ package treefortress.sound
 			pauseTime = 0; //Always reset pause time on play
 			
 			this.volume = volume;
-			this.mute = mute && _rootManager.mute;
+			this.mute = mute;
 			return this;
 		}
 		
@@ -182,7 +182,7 @@ package treefortress.sound
 		/**
 		 * Mute current sound.
 		 */
-		public function get mute():Boolean { return _muted; }
+		public function get mute():Boolean { return (_muted || (manager && manager.mute)); }
 		public function set mute(value:Boolean):void {
 			_muted = value;
 			if(channel){

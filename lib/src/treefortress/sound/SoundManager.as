@@ -182,7 +182,7 @@ package treefortress.sound
 		/**
 		 * Mute all instances.
 		 */
-		public function get mute():Boolean { return _mute; }
+		public function get mute():Boolean { return (_mute || (parent && parent.mute)); }
 		public function set mute(value:Boolean):void {
 			_mute = value;
 			for(var i:int = instances.length; i--;){
