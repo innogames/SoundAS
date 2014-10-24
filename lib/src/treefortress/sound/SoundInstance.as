@@ -298,10 +298,15 @@ package treefortress.sound
 				sound.close();
 			} catch(e:Error){}
 			sound = null;
+			_isPlaying = false;
 			_soundTransform = null;
 			stopChannel(channel);
 			channel = null;
-			fade.end(false);
+			if (currentTween)
+			{
+				currentTween.end(false);
+				currentTween = null;
+			}
 		}
 		
 		/**
@@ -312,6 +317,7 @@ package treefortress.sound
 			var channel:SoundChannel = event.target as SoundChannel;
 			channel.removeEventListener(Event.SOUND_COMPLETE, onSoundComplete);
 			
+			var soundLength:Number = sound ? sound.length : channel.position;
 			//If it's the current channel, see if we should loop.
 			if(channel == this.channel){
 				this.channel = null;
@@ -335,7 +341,7 @@ package treefortress.sound
 			}
 			//Clear out any old channels...
 			for(var i:int = oldChannels.length; i--;){
-				if(channel.position == sound.length){
+				if(channel.position == soundLength){
 					stopChannel(channel);
 					oldChannels.splice(i, 1);
 				}
