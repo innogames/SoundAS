@@ -171,6 +171,8 @@ package treefortress.sound
 		 * Stop the currently playing sound and set it's position to 0
 		 */
 		public function stop():SoundInstance {
+			if (!channel) { return this; }
+			soundCompletedCallbacks.iterateCallbacks(this);
 			pauseTime = 0;
 			stopChannel(channel);
 			channel = null;
@@ -304,7 +306,7 @@ package treefortress.sound
 			channel = null;
 			if (currentTween)
 			{
-				currentTween.end(false);
+				currentTween.kill();
 				currentTween = null;
 			}
 		}
